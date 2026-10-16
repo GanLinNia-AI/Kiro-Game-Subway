@@ -16,9 +16,11 @@
   const OBSTACLE_INTERVAL_BASE = 90;
   const COIN_INTERVAL = 60;
   const SPEED_INITIAL = 4, SPEED_MAX = 12, SPEED_INCREMENT = 0.5, SPEED_INTERVAL = 300;
+  // 障礙車 3 種速度倍率（相對於 gameState.speed）
+  const OBS_SPEED_TYPES = [0.6, 1.0, 1.5];
 
   // --- Game state ---
-  const gameState = { state: 'IDLE', score: 0, speed: SPEED_INITIAL, frame: 0 };
+  const gameState = { state: 'IDLE', score: 0, speed: SPEED_INITIAL, frame: 0, kmh: 60 };
 
   // --- Game objects ---
   let obstacles = [];
@@ -31,6 +33,8 @@
     y: CANVAS_H - 80 - PLAYER_HEIGHT,
     width: PLAYER_WIDTH,
     height: PLAYER_HEIGHT,
+    tilt: 0,        // 目前傾斜角（弧度）
+    targetTilt: 0,  // 目標傾斜角
   };
 
   // --- Utility ---
@@ -49,11 +53,14 @@
     gameState.score = 0;
     gameState.speed = SPEED_INITIAL;
     gameState.frame = 0;
+    gameState.kmh = 60;
     obstacles.length = 0;
     coins.length = 0;
     player.lane = 1;
     player.x = LANE_CENTERS[1];
     player.targetX = LANE_CENTERS[1];
+    player.tilt = 0;
+    player.targetTilt = 0;
     overlayStart.classList.add('hidden');
     overlayGameover.classList.add('hidden');
   }
@@ -70,8 +77,10 @@
     if (gameState.state !== 'PLAYING') return;
     if (e.key === 'ArrowRight') {
       player.lane = Math.min(2, player.lane + 1);
+      player.targetTilt = 0.18;   // 向右傾
     } else if (e.key === 'ArrowLeft') {
       player.lane = Math.max(0, player.lane - 1);
+      player.targetTilt = -0.18;  // 向左傾
     }
     player.targetX = LANE_CENTERS[player.lane];
   }
@@ -83,12 +92,17 @@
     const count = Math.random() < 0.5 ? 1 : 2;
     const blocked = pickRandom([0, 1, 2], count);
     blocked.forEach(lane => {
+      // 隨機選一種速度類型
+      const speedType = OBS_SPEED_TYPES[Math.floor(Math.random() * OBS_SPEED_TYPES.length)];
       obstacles.push({
         lane,
         x: LANE_CENTERS[lane],
         y: -OBSTACLE_H,
         width: OBSTACLE_W,
         height: OBSTACLE_H,
+        speedType,
+        // 依速度類型給不同顏色
+        color: speedType < 0.8 ? '#ff9f1c' : speedType < 1.2 ? '#e94560' : '#9b2226',
       });
     });
   }
@@ -116,8 +130,13 @@
 
   // --- Main loop ---
   function loop() {
-    // 滑動緩動：永遠執行，系數 0.12 讓動畫約 10 幀到位
+    // 玩家橫移緩動
     player.x += (player.targetX - player.x) * 0.12;
+
+    // 轉向傾斜緩動：靠近目標傾角；接近目標車道時回正
+    const distToTarget = Math.abs(player.x - player.targetX);
+    if (distToTarget < 5) player.targetTilt = 0;
+    player.tilt += (player.targetTilt - player.tilt) * 0.15;
 
     if (gameState.state === 'PLAYING') {
       update();
@@ -128,13 +147,15 @@
 
   function update() {
     gameState.frame++;
-    // Speed increment
+
+    // 加速
     if (gameState.frame % SPEED_INTERVAL === 0 && gameState.frame > 0) {
       gameState.speed = Math.min(gameState.speed + SPEED_INCREMENT, SPEED_MAX);
+      gameState.kmh += Math.random() < 0.5 ? 2 : 3;
     }
 
-    // Move obstacles
-    obstacles.forEach(o => { o.y += gameState.speed; });
+    // 障礙車各自依 speedType 移動
+    obstacles.forEach(o => { o.y += gameState.speed * o.speedType; });
     obstacles = obstacles.filter(o => o.y <= CANVAS_H);
 
     // Move coins
@@ -165,23 +186,19 @@
 
   // --- Rendering ---
   function drawBackground() {
-    // 柏油路底色
     ctx.fillStyle = '#3a3a3a';
     ctx.fillRect(0, 0, 480, 640);
 
-    // 路面紋理（稍亮）
     ctx.fillStyle = '#424242';
     LANE_CENTERS.forEach(cx => {
       ctx.fillRect(cx - 75, 0, 150, 640);
     });
 
-    // 左右路肩（黃線）
     ctx.strokeStyle = '#f5c518';
     ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(5, 640); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(475, 0); ctx.lineTo(475, 640); ctx.stroke();
 
-    // 道路虛線分隔線（白色，隨速度滾動）
     const offset = (gameState.frame * gameState.speed) % 60;
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 3;
@@ -191,15 +208,6 @@
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke();
     });
     ctx.setLineDash([]);
-  }
-
-  function drawScrollingLines() {
-    const offset = (gameState.frame * gameState.speed) % 40;
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1;
-    for (let y = offset; y < 640; y += 40) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(480, y); ctx.stroke();
-    }
   }
 
   function drawCoins() {
@@ -214,55 +222,57 @@
     });
   }
 
-  function drawObstacles() {
-    obstacles.forEach(obs => {
-      drawCar(obs.x, obs.y, obs.width, obs.height, '#e94560');
-    });
-  }
+  // 繪製俯視汽車，tilt 為車身傾斜角（弧度）
+  function drawCar(x, y, w, h, bodyColor, tilt) {
+    ctx.save();
+    ctx.translate(x, y + h / 2);
+    ctx.rotate(tilt || 0);
+    ctx.translate(-x, -(y + h / 2));
 
-  function drawCar(x, y, w, h, bodyColor) {
-    const r = 4; // 圓角
-    // 車身
+    const r = 4;
     ctx.beginPath();
     ctx.roundRect(x - w/2, y, w, h, r);
     ctx.fillStyle = bodyColor;
     ctx.fill();
 
-    // 擋風玻璃（前）
     ctx.fillStyle = 'rgba(180,230,255,0.7)';
     ctx.fillRect(x - w/2 + 5, y + 8, w - 10, h * 0.28);
 
-    // 後窗（後）
     ctx.fillStyle = 'rgba(180,230,255,0.5)';
     ctx.fillRect(x - w/2 + 5, y + h - 8 - h * 0.18, w - 10, h * 0.18);
 
-    // 四個輪子
     ctx.fillStyle = '#111';
     const tyreW = 7, tyreH = 10;
-    // 左前
     ctx.fillRect(x - w/2 - tyreW + 2, y + 6, tyreW, tyreH);
-    // 右前
     ctx.fillRect(x + w/2 - 2, y + 6, tyreW, tyreH);
-    // 左後
     ctx.fillRect(x - w/2 - tyreW + 2, y + h - 6 - tyreH, tyreW, tyreH);
-    // 右後
     ctx.fillRect(x + w/2 - 2, y + h - 6 - tyreH, tyreW, tyreH);
 
-    // 車頭燈
     ctx.fillStyle = '#fffacd';
     ctx.fillRect(x - w/2 + 4, y + 2, 8, 4);
     ctx.fillRect(x + w/2 - 12, y + 2, 8, 4);
+
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    obstacles.forEach(obs => {
+      drawCar(obs.x, obs.y, obs.width, obs.height, obs.color, 0);
+    });
   }
 
   function drawPlayer() {
-    drawCar(player.x, player.y, player.width, player.height, '#00b4d8');
+    drawCar(player.x, player.y, player.width, player.height, '#00b4d8', player.tilt);
   }
 
   function drawHUD() {
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 20px sans-serif';
     ctx.textAlign = 'left';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillStyle = 'white';
     ctx.fillText('分數：' + gameState.score, 16, 32);
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillStyle = '#ffd60a';
+    ctx.fillText(gameState.kmh + ' km/h', 16, 58);
   }
 
   function render() {
