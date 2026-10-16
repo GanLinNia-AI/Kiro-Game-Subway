@@ -116,6 +116,9 @@
 
   // --- Main loop ---
   function loop() {
+    // 滑動緩動：永遠執行，系數 0.12 讓動畫約 10 幀到位
+    player.x += (player.targetX - player.x) * 0.12;
+
     if (gameState.state === 'PLAYING') {
       update();
     }
@@ -125,10 +128,6 @@
 
   function update() {
     gameState.frame++;
-
-    // 滑動緩動：x 每幀靠近 targetX 的 25%
-    player.x += (player.targetX - player.x) * 0.25;
-
     // Speed increment
     if (gameState.frame % SPEED_INTERVAL === 0 && gameState.frame > 0) {
       gameState.speed = Math.min(gameState.speed + SPEED_INCREMENT, SPEED_MAX);
