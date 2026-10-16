@@ -27,6 +27,7 @@
   const player = {
     lane: 1,
     x: LANE_CENTERS[1],
+    targetX: LANE_CENTERS[1],
     y: CANVAS_H - 80 - PLAYER_HEIGHT,
     width: PLAYER_WIDTH,
     height: PLAYER_HEIGHT,
@@ -52,6 +53,7 @@
     coins.length = 0;
     player.lane = 1;
     player.x = LANE_CENTERS[1];
+    player.targetX = LANE_CENTERS[1];
     overlayStart.classList.add('hidden');
     overlayGameover.classList.add('hidden');
   }
@@ -71,7 +73,7 @@
     } else if (e.key === 'ArrowLeft') {
       player.lane = Math.max(0, player.lane - 1);
     }
-    player.x = LANE_CENTERS[player.lane];
+    player.targetX = LANE_CENTERS[player.lane];
   }
 
   document.addEventListener('keydown', onKeyDown);
@@ -123,6 +125,9 @@
 
   function update() {
     gameState.frame++;
+
+    // 滑動緩動：x 每幀靠近 targetX 的 25%
+    player.x += (player.targetX - player.x) * 0.25;
 
     // Speed increment
     if (gameState.frame % SPEED_INTERVAL === 0 && gameState.frame > 0) {
