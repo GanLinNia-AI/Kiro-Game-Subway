@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>三線跑酷</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="overlay-start" class="overlay">
+    <h1>三線跑酷</h1>
+    <button id="btn-start">開始遊戲</button>
+  </div>
+
+  <div id="overlay-gameover" class="overlay hidden">
+    <h2>遊戲結束</h2>
+    <p id="final-score">最終分數：0</p>
+    <button id="btn-restart">重新開始</button>
+  </div>
+
+  <canvas id="gameCanvas" width="480" height="640">
+    請使用現代瀏覽器開啟本遊戲
+  </canvas>
+
+  <script src="game.js"></script>
+</body>
+</html>

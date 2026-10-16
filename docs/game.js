@@ -1,0 +1,234 @@
+﻿document.addEventListener('DOMContentLoaded', () => {
+  // DOM references
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const overlayStart = document.getElementById('overlay-start');
+  const overlayGameover = document.getElementById('overlay-gameover');
+  const btnStart = document.getElementById('btn-start');
+  const btnRestart = document.getElementById('btn-restart');
+  const finalScore = document.getElementById('final-score');
+
+  // --- Constants ---
+  const CANVAS_W = 480, CANVAS_H = 640;
+  const LANE_CENTERS = [80, 240, 400];
+  const PLAYER_WIDTH = 40, PLAYER_HEIGHT = 60;
+  const OBSTACLE_W = 40, OBSTACLE_H = 60;
+  const OBSTACLE_INTERVAL_BASE = 90;
+  const COIN_INTERVAL = 60;
+  const SPEED_INITIAL = 4, SPEED_MAX = 12, SPEED_INCREMENT = 0.5, SPEED_INTERVAL = 300;
+
+  // --- Game state ---
+  const gameState = { state: 'IDLE', score: 0, speed: SPEED_INITIAL, frame: 0 };
+
+  // --- Game objects ---
+  let obstacles = [];
+  let coins = [];
+
+  const player = {
+    lane: 1,
+    x: LANE_CENTERS[1],
+    y: CANVAS_H - 80 - PLAYER_HEIGHT,
+    width: PLAYER_WIDTH,
+    height: PLAYER_HEIGHT,
+  };
+
+  // --- Utility ---
+  function pickRandom(arr, n) {
+    const copy = arr.slice();
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy.slice(0, n);
+  }
+
+  // --- State management ---
+  function startGame() {
+    gameState.state = 'PLAYING';
+    gameState.score = 0;
+    gameState.speed = SPEED_INITIAL;
+    gameState.frame = 0;
+    obstacles.length = 0;
+    coins.length = 0;
+    player.lane = 1;
+    player.x = LANE_CENTERS[1];
+    overlayStart.classList.add('hidden');
+    overlayGameover.classList.add('hidden');
+  }
+
+  function endGame() {
+    if (gameState.state !== 'PLAYING') return;
+    gameState.state = 'GAME_OVER';
+    finalScore.textContent = '最終分數：' + gameState.score;
+    overlayGameover.classList.remove('hidden');
+  }
+
+  // --- Input ---
+  function onKeyDown(e) {
+    if (gameState.state !== 'PLAYING') return;
+    if (e.key === 'ArrowRight') {
+      player.lane = Math.min(2, player.lane + 1);
+    } else if (e.key === 'ArrowLeft') {
+      player.lane = Math.max(0, player.lane - 1);
+    }
+    player.x = LANE_CENTERS[player.lane];
+  }
+
+  document.addEventListener('keydown', onKeyDown);
+
+  // --- Spawn logic ---
+  function spawnObstacles() {
+    const count = Math.random() < 0.5 ? 1 : 2;
+    const blocked = pickRandom([0, 1, 2], count);
+    blocked.forEach(lane => {
+      obstacles.push({
+        lane,
+        x: LANE_CENTERS[lane],
+        y: -OBSTACLE_H,
+        width: OBSTACLE_W,
+        height: OBSTACLE_H,
+      });
+    });
+  }
+
+  function spawnCoin() {
+    const lane = Math.floor(Math.random() * 3);
+    const conflict = obstacles.some(o => o.lane === lane && o.y < 100);
+    if (!conflict) {
+      coins.push({ lane, x: LANE_CENTERS[lane], y: -20, radius: 15, collected: false });
+    }
+  }
+
+  // --- Collision detection ---
+  function isColliding(p, obs) {
+    const px1 = p.x - p.width / 2 + 4;
+    const px2 = p.x + p.width / 2 - 4;
+    const py1 = p.y + 4;
+    const py2 = p.y + p.height - 4;
+    const ox1 = obs.x - obs.width / 2 + 4;
+    const ox2 = obs.x + obs.width / 2 - 4;
+    const oy1 = obs.y + 4;
+    const oy2 = obs.y + obs.height - 4;
+    return (px1 < ox2) && (px2 > ox1) && (py1 < oy2) && (py2 > oy1);
+  }
+
+  // --- Main loop ---
+  function loop() {
+    if (gameState.state === 'PLAYING') {
+      update();
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function update() {
+    gameState.frame++;
+
+    // Speed increment
+    if (gameState.frame % SPEED_INTERVAL === 0 && gameState.frame > 0) {
+      gameState.speed = Math.min(gameState.speed + SPEED_INCREMENT, SPEED_MAX);
+    }
+
+    // Move obstacles
+    obstacles.forEach(o => { o.y += gameState.speed; });
+    obstacles = obstacles.filter(o => o.y <= CANVAS_H);
+
+    // Move coins
+    coins.forEach(c => { c.y += gameState.speed; });
+    coins = coins.filter(c => c.y - c.radius <= CANVAS_H && !c.collected);
+
+    // Spawn
+    const interval = Math.max(45, OBSTACLE_INTERVAL_BASE - Math.floor(gameState.speed) * 3);
+    if (gameState.frame % interval === 0) spawnObstacles();
+    if (gameState.frame % COIN_INTERVAL === 0) spawnCoin();
+
+    // Coin collection
+    coins.forEach(coin => {
+      if (coin.collected) return;
+      const dx = coin.x - player.x;
+      const dy = (coin.y + coin.radius) - (player.y + player.height / 2);
+      if (Math.sqrt(dx * dx + dy * dy) < coin.radius + 20) {
+        coin.collected = true;
+        gameState.score += 10;
+      }
+    });
+
+    // Collision detection
+    obstacles.forEach(obs => {
+      if (isColliding(player, obs)) endGame();
+    });
+  }
+
+  // --- Rendering ---
+  function drawBackground() {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, 480, 640);
+
+    const LANE_COLORS = ['#16213e', '#0f3460', '#16213e'];
+    LANE_CENTERS.forEach((cx, i) => {
+      ctx.fillStyle = LANE_COLORS[i];
+      ctx.fillRect(cx - 75, 0, 150, 640);
+    });
+
+    ctx.strokeStyle = '#e94560';
+    ctx.lineWidth = 2;
+    [160, 320].forEach(x => {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke();
+    });
+  }
+
+  function drawScrollingLines() {
+    const offset = (gameState.frame * gameState.speed) % 40;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let y = offset; y < 640; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(480, y); ctx.stroke();
+    }
+  }
+
+  function drawCoins() {
+    coins.filter(c => !c.collected).forEach(coin => {
+      ctx.beginPath();
+      ctx.arc(coin.x, coin.y + coin.radius, coin.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd60a';
+      ctx.fill();
+      ctx.strokeStyle = '#e9c46a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+  }
+
+  function drawObstacles() {
+    ctx.fillStyle = '#e94560';
+    obstacles.forEach(obs => {
+      ctx.fillRect(obs.x - obs.width / 2, obs.y, obs.width, obs.height);
+    });
+  }
+
+  function drawPlayer() {
+    ctx.fillStyle = '#00b4d8';
+    ctx.fillRect(player.x - player.width / 2, player.y, player.width, player.height);
+  }
+
+  function drawHUD() {
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('分數：' + gameState.score, 16, 32);
+  }
+
+  function render() {
+    drawBackground();
+    drawScrollingLines();
+    drawCoins();
+    drawObstacles();
+    drawPlayer();
+    drawHUD();
+  }
+
+  // --- Button bindings ---
+  btnStart.addEventListener('click', startGame);
+  btnRestart.addEventListener('click', startGame);
+
+  requestAnimationFrame(loop);
+});
