@@ -165,20 +165,32 @@
 
   // --- Rendering ---
   function drawBackground() {
-    ctx.fillStyle = '#1a1a2e';
+    // 柏油路底色
+    ctx.fillStyle = '#3a3a3a';
     ctx.fillRect(0, 0, 480, 640);
 
-    const LANE_COLORS = ['#16213e', '#0f3460', '#16213e'];
-    LANE_CENTERS.forEach((cx, i) => {
-      ctx.fillStyle = LANE_COLORS[i];
+    // 路面紋理（稍亮）
+    ctx.fillStyle = '#424242';
+    LANE_CENTERS.forEach(cx => {
       ctx.fillRect(cx - 75, 0, 150, 640);
     });
 
-    ctx.strokeStyle = '#e94560';
-    ctx.lineWidth = 2;
+    // 左右路肩（黃線）
+    ctx.strokeStyle = '#f5c518';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(5, 640); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(475, 0); ctx.lineTo(475, 640); ctx.stroke();
+
+    // 道路虛線分隔線（白色，隨速度滾動）
+    const offset = (gameState.frame * gameState.speed) % 60;
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([30, 30]);
+    ctx.lineDashOffset = -offset;
     [160, 320].forEach(x => {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 640); ctx.stroke();
     });
+    ctx.setLineDash([]);
   }
 
   function drawScrollingLines() {
@@ -203,15 +215,47 @@
   }
 
   function drawObstacles() {
-    ctx.fillStyle = '#e94560';
     obstacles.forEach(obs => {
-      ctx.fillRect(obs.x - obs.width / 2, obs.y, obs.width, obs.height);
+      drawCar(obs.x, obs.y, obs.width, obs.height, '#e94560');
     });
   }
 
+  function drawCar(x, y, w, h, bodyColor) {
+    const r = 4; // 圓角
+    // 車身
+    ctx.beginPath();
+    ctx.roundRect(x - w/2, y, w, h, r);
+    ctx.fillStyle = bodyColor;
+    ctx.fill();
+
+    // 擋風玻璃（前）
+    ctx.fillStyle = 'rgba(180,230,255,0.7)';
+    ctx.fillRect(x - w/2 + 5, y + 8, w - 10, h * 0.28);
+
+    // 後窗（後）
+    ctx.fillStyle = 'rgba(180,230,255,0.5)';
+    ctx.fillRect(x - w/2 + 5, y + h - 8 - h * 0.18, w - 10, h * 0.18);
+
+    // 四個輪子
+    ctx.fillStyle = '#111';
+    const tyreW = 7, tyreH = 10;
+    // 左前
+    ctx.fillRect(x - w/2 - tyreW + 2, y + 6, tyreW, tyreH);
+    // 右前
+    ctx.fillRect(x + w/2 - 2, y + 6, tyreW, tyreH);
+    // 左後
+    ctx.fillRect(x - w/2 - tyreW + 2, y + h - 6 - tyreH, tyreW, tyreH);
+    // 右後
+    ctx.fillRect(x + w/2 - 2, y + h - 6 - tyreH, tyreW, tyreH);
+
+    // 車頭燈
+    ctx.fillStyle = '#fffacd';
+    ctx.fillRect(x - w/2 + 4, y + 2, 8, 4);
+    ctx.fillRect(x + w/2 - 12, y + 2, 8, 4);
+  }
+
   function drawPlayer() {
-    ctx.fillStyle = '#00b4d8';
-    ctx.fillRect(player.x - player.width / 2, player.y, player.width, player.height);
+    drawCar(player.x, player.y, player.width, player.height, '#00b4d8');
   }
 
   function drawHUD() {
@@ -223,7 +267,6 @@
 
   function render() {
     drawBackground();
-    drawScrollingLines();
     drawCoins();
     drawObstacles();
     drawPlayer();
